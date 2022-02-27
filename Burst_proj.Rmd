@@ -1,0 +1,356 @@
+---
+title: "Speaking rate effects on burst amplitude"
+author: "Speech and Psycholinguistics Lab-York University"
+output: 
+  html_document:
+    keep_md: true
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(dev = "png",
+                      dpi = 600,
+                      echo = FALSE,
+                      cache = FALSE)
+options(repos = list(CRAN="http://cran.rstudio.com/"))
+```
+
+## Background
+
+We're primarily concerned with the relationship between speaking rate and the amplitude (BA) of consonant bursts in onset CVs. We're also interested in whether there are differences in how BA is reflected in languages that differ in how phonological voicing is implemented: English (long-lag VOT) and Indian Tamil (short-lag VOT).
+
+### Methods
+
+Participants (English *n*=12; Tamil *n*=10) self-recorded CVs (at each place of articulation with /a/) at 4 different, self-regulated speeds (slow, normal, fast, very fast).
+
+### Measurements
+
+We looked at a few amplitude landmarks in the burst and following vowel: 
+
+Burst
+
+1. **Ahi**--amplitude of the highest component in the burst spectrum above 3kHz (males), 3.5kHz (females)
+2. **Max23**--amplitude of the highest component in the burst spectrum in the range of F2/F3 of the following vowel
+
+Vowel
+
+1. **Av**--average amplitude of F1
+
+Difference measures served as dependent variables:
+1. **HiDiff**--Av-Ahi
+2. **F23Diff**--Av-Max23
+
+And the temporal measurements:
+1. v_dur: Vowel duration of the CV
+2. VOT: time from onset of the burst to zero crossing of first periodic wave of the vowel
+
+### Vowel duration
+The distribution of v_dur was examined and log-transformed to ensure a more normal distribution --> but do I need it?
+
+```{r}
+rate <- read.csv('rate2.csv', header=TRUE)
+rate$rate <- as.factor(rate$rate)
+rate$lang <- as.factor(rate$lang)
+rate$POA <- as.factor(rate$POA)
+rate$logv_dur <- log(rate$v_dur)
+```
+The density plots:
+
+```{r VdurDensity, fig.height = 3, fig.width = 3}
+library(ggplot2)
+ggplot(rate, aes(v_dur)) + geom_density() + xlab("Vowel duration (s)")
+```
+An the log(v_dur) density plot:
+
+```{r LogVdurDensity, fig.height=3, fig.width=3}
+ggplot(rate, aes(logv_dur)) + geom_density() + xlab("log(vowel duration)")
+```
+
+### **Note on speaking rate and vowel duration**
+The predictions laid out in the introduction rely on there being a clear relationship between speaking rate and vowel duration. That is, it need not be the case that the more syllables a speaker speaks in a given time affect the duration of the syllabic nucleus. Increases in rate may simply result from a decrease in pauses between syllables. Given this complication we might appeal to the term "articulation rate"(Jacewicz, et al. 2009[LVC]), which captures the rate of speech production not including pauses between syllables. The impressionistic self-assessment of articulation rate as "slow," "normal," "fast," and "very fast," leads to a highly variable productions between speakers. In order to avoid bleaching the variation in articulation rate production (which inevitably occurs in designs that aggregate tokens according to impressionistic rate) a continuous measure such as vowel duration (in CVs) is desirable. While it need not be the case that vowels in CVs decrease in duration with increased rate, it remains an empirical question in the present data whether such a relationship is borne out. 
+
+Vowel duration data, which was log transformed to reflect a normal distribution, was modeled as a function of Rate and Language.
+Getting data and fixing some factors:
+
+```{r}
+rate <- read.csv('rate2.csv', header=TRUE)
+rate$rate <- as.factor(rate$rate)
+rate$lang <- as.factor(rate$lang)
+rate$POA <- as.factor(rate$POA)
+rate$logv_dur <- log(rate$v_dur)
+levels(rate$lang) <- c("English","Tamil") 
+levels(rate$rate) <- c("slow", "normal", "fast", "very fast")
+#ordered(rate$rate, levels = c(1,2,3,4))
+```
+The model:
+```{r}
+library(nlme)
+full_rate<- lme(v_dur ~ rate * lang, rate, random = ~1 + rate | sub)
+summary(full_rate)
+#1=slow, 2=normal, 3=fast, 4=very fast
+
+library(emmeans)
+full_rate_emm <- emmeans(full_rate, "rate")
+pairs(full_rate_emm)
+eff_size(full_rate_emm, sigma = sigma(full_rate), edf =Inf)
+```
+The plot:
+```{r model_dur_speed}
+library(ggplot2)
+library(sjPlot)
+plot_model(full_rate, type="int") + 
+  xlab("Rate") +
+  ylab("Estimated vowel duration(s)") + 
+  theme_bw() + 
+  theme(aspect.ratio=1)+
+  theme(plot.title = element_blank())+ 
+  theme(legend.title = element_blank()) +
+  theme(legend.position = c(0.80, 0.2))
+```
+
+Here is the real data:
+```{r Figure2}
+library(tidyverse)
+install.packages("RColorBrewer")
+cbPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+dodge <- position_dodge(width = 0.8)
+rate %>%
+  mutate(class = fct_reorder(rate, v_dur, .fun='median')) %>%
+  ggplot( aes(x=reorder(rate, v_dur), y=v_dur, fill=lang)) +
+  geom_violin(position=dodge, notch=TRUE, color="grey", outlier.shape = NA, alpha=0.4) +
+  geom_boxplot(position = dodge,notch=TRUE, width=0.2, outlier.shape = NA, alpha=0.8) +
+  #scale_x_discrete(limits = rev(levels(rate))) +
+  theme_bw() +
+  theme(aspect.ratio=1)+
+  #facet_wrap(~lang) +
+  ylab("vowel dur (s)") +
+  xlab("Speaking rate") +
+  coord_flip() +
+  theme(plot.title = element_blank())+ 
+  theme(legend.title = element_blank())+ 
+  theme(legend.position = c(0.85,0.1))+
+  theme(legend.text=element_text(size=10))+
+  #scale_fill_manual(values=cbPalette, guide="none")
+  scale_fill_brewer(palette = "Set1")
+```
+
+### Make a full data frame for Burst models
+
+The data were coded separately by language. We want to make a full model, so need to combine the dataframes.First clean up the Tamil data: 
+```{r}
+tam <- read.csv('tam_burst.csv')
+tam$lang <- as.factor('2')##insert 'lang' column, call it '2' for Tamil
+tam$POA[tam$POA=='2'] <- '5' ##Change orig '2' (dental) to '5'. 4=ret, 3=vel, 1=bilab
+tam$POA <- as.factor(tam$POA) ##Change POA to factor
+```
+
+Now do something similar for English:
+```{r}
+eng <- read.csv('eng_burst.csv')
+eng$POA <- as.factor(eng$POA)
+eng$POA <- factor(eng$POA,levels=c(1,2,3), labels=c("p","t","k")) ##Change Eng POA to factor w/ numbers
+eng$lang <- as.factor('1') ##insert 'lang' column, call it '1' for Eng
+```
+
+Make a new full data frame:
+```{r}
+full <- rbind(eng, tam)
+```
+
+## Models and Plots
+First we need to install "sjPlot" which will give linear model prediction plots with confidence intervals
+```{r}
+library(sjPlot)
+```
+
+Make a "lang" column in the **full** data frame. Make new column (log_vdur) because we're taking log of duration measures (as suggested by a reviewer).
+```{r}
+levels(full$lang) <- c("English", "Tamil")
+full$logv_dur <- log(full$v_dur)
+```
+
+### **Models and Plots of F23Diff and HiDiff (with both languages)**
+## F23Diff
+```{r}
+library(nlme)
+full_F23Diff <- lme(F23Diff ~ v_dur * lang, full, random = ~1 + v_dur|sub)
+summary(full_F23Diff)
+```
+And the F23Diff plot for the full data set:
+```{r}
+library(ggplot2)
+full_F23Diff_plot <- plot_model(full_F23Diff, type="pred", terms = c("v_dur", "lang")) +
+  aes(linetype=group, color=group) + 
+  theme_bw() + 
+  theme(aspect.ratio=1) +
+  xlab("vowel dur (s)") +
+  ylab("F23Diff (dB)") + 
+  theme(legend.position="none") + 
+  #xlim(-4,0) +ylim(0,60)+ 
+  ggtitle("")
+full_F23Diff_plot + 
+  geom_point(data=full, aes(v_dur,F23Diff, color=lang), inherit.aes = FALSE, alpha=0.1) + 
+  ylim(0,80)
+```
+
+The plot confirms the model results: There is no significant language effect, though Tamil is overall 4.5dB higher (more amplitude difference between BA and V; quieter) in the F2/F3 range than English. The effect of logv_dur is evident (negative, decreasing by 6dB per unit of logv_dur). There is no interaction.
+
+## HiDiff
+```{r}
+full_HiDiff <- lme(HiDiff ~ v_dur * lang, full, random = ~1 + v_dur|sub)
+summary(full_HiDiff)
+
+full_HiDiff_plot <- plot_model(full_HiDiff, type="pred", terms = c("v_dur", "lang")) + 
+  aes(linetype=group,color=group) + 
+  theme_bw() + 
+  xlab("vowel dur (s)") +
+  ylab("HiDiff (dB)") + 
+  theme(legend.title=element_blank()) + 
+  theme(aspect.ratio=1)+
+  #xlim(-4,0) + 
+  ylim(0,60)+
+  theme(legend.position = c(0.80, 0.85), legend.key = element_rect(colour = "transparent", fill = "white"), legend.background = element_rect(fill=alpha('white', 0.01))) + 
+  ggtitle("")
+full_HiDiff_plot + 
+  geom_point(data=full, aes(v_dur,HiDiff,color=lang), inherit.aes = FALSE, alpha=0.1) + 
+  ylim(0,80)
+```
+
+The plot confirms that HiDiff is higher (lower BA) in Tamil (11.69dB) than English. The effect of logv_dur on HiDiff is the same in both languages (-4.83dB/unit logv_dur).
+
+Now let's make a new FULL data frame with just p-s and k-s (both are in English and Tamil) [Not executed here]
+
+```
+full_pk <- full[which(full$POA=="1" | full$POA=="3"),]
+```
+
+We're going to model the difference between p and k as a function of vowel duration in the two languages
+
+```
+pk_model <- lme(HiDiff ~ POA * v_dur * lang, full_pk, random = ~1 + v_dur | sub)
+summary(pk_model)
+plot_model(pk_model, type="pred", terms = c("v_dur","POA", "lang"))
+```
+
+## Language-specific models
+
+Next we model F23Diff and HiDiff in each language to examine the effects of place of articulation (POA) as well as speaking rate (v_dur).
+
+## **English**
+
+### F23Diff Model
+```{r}
+eng$logv_dur <- log(eng$v_dur)
+fit_eng_F23Diff_vdur <- lme(F23Diff ~ POA * v_dur, eng, random = ~1 + v_dur|sub, na.action = na.omit)
+summary(fit_eng_F23Diff_vdur)
+```
+
+### F23Diff Plot
+```{r}
+fit_eng_F23Diff_vdur_plot <- plot_model(fit_eng_F23Diff_vdur, type="pred", terms = c("v_dur", "POA")) +
+  aes(linetype=group,color=group) +
+  theme_bw() +
+  theme(aspect.ratio=1)+
+  ylab("F23Diff (dB)") +
+  ylim(0,80) +
+  ggtitle("") +
+  scale_x_continuous(name="vowel dur (s)")+ 
+  theme(legend.position="none")
+eng_F23Diff_fitraw <-fit_eng_F23Diff_vdur_plot + 
+  geom_text(data=eng, aes(v_dur,F23Diff, color=POA), inherit.aes = FALSE, label=eng$POA, alpha=0.35) 
+eng_F23Diff_fitraw
+```
+
+### HiDiff Model
+```{r}
+fit_eng_HiDiff_vdur <- lme(HiDiff ~ POA * v_dur, eng, random = ~1 + v_dur|sub, na.action = na.omit)
+summary(fit_eng_HiDiff_vdur)
+```
+
+### HiDiff Plot
+```{r}
+fit_eng_HiDiff_vdur_plot <- plot_model(fit_eng_HiDiff_vdur, type="pred", terms = c("v_dur", "POA")) +
+  aes(linetype=group,color=group) +
+  theme_bw() +
+  theme(aspect.ratio=1)+
+  ylab("HiDiff (dB)") +
+  ylim(0,80) +
+  ggtitle("") +scale_x_continuous(name="vowel dur (s)") +
+  theme(legend.title = element_blank())
+eng_HiDiff_fitraw <- fit_eng_HiDiff_vdur_plot + 
+  geom_text(data=eng, aes(v_dur,HiDiff, color=POA), inherit.aes = FALSE, label=eng$POA, alpha=0.35) 
+eng_HiDiff_fitraw
+```
+
+## **Tamil**
+
+### F23Diff Model (Tamil)
+```{r}
+levels(tam$POA) <- c("p","k","ʈ","t̪")
+tam$POA <- factor(tam$POA, levels=c("p","t̪", "ʈ","k")) ##reorder the labels
+tam$logv_dur <- log(tam$v_dur)
+fit_tam_F23Diff_vdur <- lme(F23Diff ~ POA * v_dur, tam, random = ~1 + v_dur|sub, na.action = na.omit)
+summary(fit_tam_F23Diff_vdur)
+```
+
+### F23Diff Plot (Tamil)
+```{r}
+fit_tam_F23Diff_vdur_plot <- plot_model(fit_tam_F23Diff_vdur, type="pred", terms = c("v_dur", "POA")) +
+  aes(linetype=group,color=group) +
+  theme_bw() + 
+  theme(aspect.ratio=1) +
+  xlab("vowel dur (s)") +
+  ylab("F23Diff (dB)") + 
+  theme(legend.position="none") +
+  ggtitle("") 
+tam_F23Diff_fitraw <- fit_tam_F23Diff_vdur_plot + 
+  geom_text(data=tam, aes(v_dur,F23Diff, color=POA), inherit.aes = FALSE, label=tam$POA, alpha=0.35) + 
+  ylim(0,80)
+tam_F23Diff_fitraw
+```
+
+#### Pairwise comparisons between POAs (Tamil F23Diff)
+First make a model that doesn't have logv_dur as an interaction factor but as an additive factor.
+```{r}
+tam_F23Diff_POA <- lme(F23Diff ~ POA + v_dur, tam, random = ~1 + v_dur | sub, na.action = na.omit)
+```{r}
+library(emmeans)
+tam_F23Diff_POA_emm <- emmeans(tam_F23Diff_POA, "POA")
+pairs(tam_F23Diff_POA_emm)
+eff_size(tam_F23Diff_POA_emm, sigma = sigma(tam_F23Diff_POA), edf=Inf)
+```
+
+### HiDiff Model
+```{r}
+levels(tam$POA) <- c("p","k","ʈ","t̪")
+fit_tam_HiDiff_vdur <- lme(HiDiff ~ POA * v_dur, tam, random = ~1 + v_dur|sub, na.action = na.omit)
+summary(fit_tam_HiDiff_vdur)
+```
+
+### HiDiff Plot
+```{r}
+fit_tam_HiDiff_vdur_plot <- plot_model(fit_tam_HiDiff_vdur, type="pred", terms = c("v_dur", "POA")) +
+  aes(linetype=group,color=group) +
+  theme_bw() + 
+  theme(aspect.ratio=1) +
+  xlab("vowel dur (s)") +
+  ylab("HiDiff (dB)") +
+  ggtitle("") + 
+  theme(legend.title = element_blank())
+tam_HiDiff_fitraw <- fit_tam_HiDiff_vdur_plot + 
+  geom_text(data=tam, aes(v_dur,HiDiff, color=POA), inherit.aes = FALSE, label=tam$POA, alpha=0.35) 
+tam_HiDiff_fitraw
+```
+
+#### Pairwise comparisons between POAs (Tamil HiDiff)
+First make a model that doesn't have logv_dur as an interaction factor but as an additive factor.
+```{r}
+tam_HiDiff_POA <- lme(HiDiff ~ POA + v_dur, tam, random = ~1 + v_dur | sub, na.action = na.omit)
+summary(tam_HiDiff_POA)
+```
+Then the pairwise comparisons:
+```{r}
+library(emmeans)
+tam_HiDiff_POA_emm <- emmeans(tam_HiDiff_POA, "POA")
+pairs(tam_HiDiff_POA_emm)
+eff_size(tam_HiDiff_POA_emm, sigma = sigma(tam_HiDiff_POA), edf=Inf)
