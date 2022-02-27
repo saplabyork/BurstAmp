@@ -134,11 +134,6 @@ The model:
 ## Confidence level used: 0.95
 ```
 The plot:
-
-```
-## Learn more about sjPlot with 'browseVignettes("sjPlot")'.
-```
-
 ![](Burst_proj_files/figure-html/model_dur_speed-1.png)<!-- -->
 
 Here is the real data:
@@ -164,7 +159,7 @@ Here is the real data:
 ```
 ## 
 ## The downloaded binary packages are in
-## 	/var/folders/nv/72l7lgjs2s5d2y6bbl5wz6w40000gn/T//Rtmpc6da15/downloaded_packages
+## 	/var/folders/nv/72l7lgjs2s5d2y6bbl5wz6w40000gn/T//RtmpHwluY4/downloaded_packages
 ```
 
 ```
